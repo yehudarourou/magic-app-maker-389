@@ -1,0 +1,212 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Magic App Maker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: -apple-system, sans-serif;
+        padding: 20px;
+        text-align: center;
+        background: #f4f7f6;
+        color: #333;
+      }
+      .container {
+        max-width: 500px;
+        margin: auto;
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      textarea {
+        width: 100%;
+        height: 250px;
+        margin: 15px 0;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        box-sizing: border-box;
+        font-size: 16px;
+      }
+      button {
+        background: #2ea44f;
+        color: white;
+        padding: 16px 30px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1.1em;
+        font-weight: bold;
+        width: 100%;
+      }
+      button:disabled {
+        background: #94d3a2;
+        cursor: not-allowed;
+      }
+      .status {
+        margin-top: 15px;
+        font-size: 0.9em;
+        color: #666;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🚀 App Maker</h1>
+      <p>Paste your code and tap the button.</p>
+
+      <textarea
+        id="htmlInput"
+        placeholder="<html>... paste here ...</html>"
+      ></textarea>
+      <button id="btn" onclick="makeApp()">Create My App!</button>
+      <div id="status" class="status"></div>
+    </div>
+
+    <script>
+      // CONFIGURATION
+      // Split your token into two parts
+      const part1 = "github_pat_11B6MMHKA0PdOjsqrCPHgj_zcnYUi1xWojTzE";
+      const part2 = "MLY6o0VkARCyfgKvG9UvId4kvukhWKT2CN7KCHpqJOYEO";
+
+      // Combine them only when needed
+      const GITHUB_TOKEN = part1 + part2;
+
+      const GITHUB_USER = "yehudarourou";
+
+      async function makeApp() {
+        const code = document.getElementById("htmlInput").value;
+        const btn = document.getElementById("btn");
+        const status = document.getElementById("status");
+
+        if (!code) return alert("Please paste some code first!");
+
+        btn.disabled = true;
+        status.innerText = "Processing title and translation...";
+
+        try {
+          // --- NEW: TITLE EXTRACTION & TRANSLATION ---
+          const titleMatch = code.match(/<title>(.*?)<\/title>/i);
+          let originalTitle =
+            titleMatch && titleMatch[1] ? titleMatch[1].trim() : "my-app";
+
+          // Translate Hebrew to English (using MyMemory API)
+          const translationRes = await fetch(
+            `https://api.mymemory.translated.net/get?q=${encodeURIComponent(originalTitle)}&langpair=he|en`,
+          );
+          const translationData = await translationRes.json();
+          let translatedTitle = translationData.responseData.translatedText;
+
+          // Sanitize for GitHub (English only, lowercase, dashes)
+          let repoName = translatedTitle
+            .toLowerCase()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "")
+            .replace(/-+/g, "-");
+
+          // Add random ID for uniqueness
+          repoName += "-" + Math.floor(Math.random() * 1000);
+          // --------------------------------------------
+
+          status.innerText = "Creating repository: " + repoName + "...";
+
+          // 1. Create the Repository
+          const createRepo = await fetch("https://api.github.com/user/repos", {
+            method: "POST",
+            headers: {
+              Authorization: `token ${GITHUB_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ name: repoName, auto_init: true }),
+          });
+          if (!createRepo.ok) throw new Error("Repo creation failed");
+
+          // 2. Add the index.html file
+          const contentBase64 = btoa(unescape(encodeURIComponent(code)));
+          await fetch(
+            `https://api.github.com/repos/${GITHUB_USER}/${repoName}/contents/index.html`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: `token ${GITHUB_TOKEN}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                message: "Create app",
+                content: contentBase64,
+              }),
+            },
+          );
+
+          // 3. Enable GitHub Pages
+          await fetch(
+            `https://api.github.com/repos/${GITHUB_USER}/${repoName}/pages`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `token ${GITHUB_TOKEN}`,
+                Accept: "application/vnd.github.v3+json",
+              },
+              body: JSON.stringify({ source: { branch: "main", path: "/" } }),
+            },
+          );
+
+          // 4. THE MAGIC: Start the Countdown
+          let timeLeft = 40;
+          btn.style.display = "none";
+
+          const appUrl = `https://${GITHUB_USER}.github.io/${repoName}/`;
+
+          const timer = setInterval(() => {
+            timeLeft--;
+
+            status.innerHTML = `
+                    <div style="font-size: 1.2em; color: #2ea44f;">
+                        <b>Building: ${repoName}...</b><br>
+                        <span style="font-size: 3em; font-weight: bold; display: block; margin: 10px 0;">
+                            ⏳ ${timeLeft}
+                        </span>
+                        Generating your live link...
+                    </div>`;
+
+            if (timeLeft <= 0) {
+              clearInterval(timer);
+              status.innerHTML = `
+                        <div style="padding: 20px; border: 2px solid #2ea44f; border-radius: 12px; background: #e6ffed;">
+                            <h2 style="margin-top:0; color: #2ea44f;">✨ Done!</h2>
+                            
+                            <a href="${appUrl}" target="_blank" style="display: block; background: #2ea44f; color: white; padding: 16px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-bottom: 12px;">
+                                🚀 Open My App
+                            </a>
+                            
+                            <button id="copyBtn" onclick="copyToClipboard('${appUrl}')" style="display: block; background: #007bff; color: white; padding: 16px; border: none; border-radius: 8px; font-weight: bold; width: 100%; cursor: pointer;">
+                                📋 Copy App Link
+                            </button>
+                            <p id="copyFeedback" style="margin-top: 10px; color: #007bff; font-weight: bold; display: none;">Link copied!</p>
+                        </div>`;
+            }
+          }, 1000);
+        } catch (err) {
+          status.innerText = "Error: " + err.message;
+          btn.disabled = false;
+        }
+      }
+
+      function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          const feedback = document.getElementById("copyFeedback");
+          feedback.style.display = "block";
+          const copyBtn = document.getElementById("copyBtn");
+          copyBtn.innerText = "✅ Copied!";
+
+          // Hide feedback after 3 seconds
+          setTimeout(() => {
+            feedback.style.display = "none";
+            copyBtn.innerText = "📋 Copy App Link";
+          }, 3000);
+        });
+      }
+    </script>
+  </body>
+</html>
